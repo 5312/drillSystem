@@ -10,7 +10,7 @@ use base64::{engine::general_purpose, Engine as _};
 use uuid::Uuid;
 use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
 use rand::rngs::OsRng;
-use pkcs8::{DecodePrivateKey, DecodePublicKey};
+use pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LicenseInfo {
@@ -58,46 +58,133 @@ impl fmt::Display for LicenseError {
 
 impl Error for LicenseError {}
 
-// RSA密钥 - 实际应用中，私钥应存储在安全的地方，不应硬编码
-// 这里使用的是测试密钥，生产环境请生成新的密钥对
-const PRIVATE_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDEgxwQMKHnYVxB
-2ZkF5awrWTCLGNB8E6bx+KKHT2RGJG7avIg2VCPmW/+e5gbf1FIJFowS07cWSM0e
-o6rQdLyfP6J7/D1RNIxVy8/f636P1kXMqtpQeGjQ2gimDG4yhZMVZjF1iI3vZQUC
-/V4O5VFdOXKCLzNcD0qK9a5cO6jgQrLLKL9Ryc8Dh6SQJLtNnwjMDmB5D7hgPcS1
-R9UCSMUQpeFWJzQOJiKCZtA2m+BG4KMqtS1Bw6hevNwTWVVdnJBCZqcbQCKFTHwl
-2UfcFGkW+hwRKgBL0FbzHrBDRMVAVYJRWiWtRMdeqPImgeGU48Aaa4kOyvMpywWj
-wMG+9XETAgMBAAECggEATBtPhAo0vhF1nJMtPL6hnDJpBKS0qkYCIsoNVYlE9QkQ
-SWUHWGbCgKYXbejw2K/pkZXITVygvNVIeN0sCbLfMxQYGqt8XCfZnFKYMPpYzYTK
-LnrvFELktbVK29dn2PSYUy1Kjteb4JeHqcLAyJiQPQip5JKNZXj+jYOVKNeEgYdA
-vk9UoJxvO4H8XtU7j0pHxRcBPzN/laIYU9yDjWWBKRmRbVtLCwEWZ/K5FMZvHWH5
-x60YrDYS/vCHd8AxiSmS8ewWg4xkVRYHHFHXJaGXcHjKv3BL4HMUfzf/5Smm/OBd
-rLVxmrYJ6ykU8/1zYmqxKOLsHa0KF2mB+ZsM8IbqoQKBgQDncyVdqIPXGfxA/fWK
-2qFfQBvxT7CERWDuTR+NPl4qFzKEVJgk7jN77vHEYnVUS1DAEZ5fMUmi0XlsurFV
-9I4Bv9Zkxe9GO43/QUHnxQIPcZA59sNTOLOcDsyjQE6AKkwBi9NaqUWmKW+StH02
-xdHLPOVSHfCGDv6yBv8LB3MZkQKBgQDZM6We+Wi7DAiQGpShzEiIvMWVAuEwbLft
-Kd/XuExnL5x0ScYORjzNGytMY0XQFggwFfxXZQyYfLgER+UxT8kU9zOc9Yhvq2ZN
-fDWdK5iA6q0MlqTihUNW3TohMFzpyXO7I96l5z+wIppHRbDMCenBVw+aCaVlINXQ
-6o7WIm9+owKBgQCLRv/Y9Y+BR4U1ZgEUGnVRYTZ0vvKYPYn4QK9rMDSG1sBDQk5g
-1qSsY1xDgWsUB6QSGjjtHCyxYX1I3vwFCPsxNc5SK6FUbUTzI16FMUu9oV7X3ILc
-qU7Vngb+bn7Ai5n6EgbND9ITrP2Z55c5JK5ttvZYbvMK6X3z3JvvuAzGsQKBgE7g
-A+lz3XGhL8eY9Pt9Z9YFPxJKYtRbKxMKx0p5B/4y3IOyEwfW1BCDHdpR1xyVQzWm
-Bkqf5XWcAAOltExlRYNACLbeA1KHvRrEJW7XCCwxPYO+y4n7dPvX0wVT7PKgIcDw
-IWpUgUsHLrRPOe4l4F2spxmD3eV8sSFXx4ZdFdwrAoGBANRCj6TZhHeduZGAy9ej
-J9mIlZOQlkZ+usEdAajLjdGLcfE68wwjRKp3Q11Akh0p8+MFWeVYRmXArJdnkSbF
-2JIoFGEDKrpEe9iDGQ0UgjRlNy3Zic4NnFRNSVdwZa4X5hxMK5qDbryGXSXnxGAL
-GVFiJuZTKLEE3r/8zB8fpU+i
------END PRIVATE KEY-----"#;
+// 获取密钥存储目录
+fn get_keys_dir() -> PathBuf {
+    let app_dir = if cfg!(target_os = "windows") {
+        let app_data = std::env::var("APPDATA").expect("无法获取APPDATA环境变量");
+        PathBuf::from(app_data).join("drilling-system")
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var("HOME").expect("无法获取HOME环境变量");
+        PathBuf::from(home).join("Library").join("Application Support").join("drilling-system")
+    } else {
+        // Linux
+        let home = std::env::var("HOME").expect("无法获取HOME环境变量");
+        PathBuf::from(home).join(".config").join("drilling-system")
+    };
+    
+    let keys_dir = app_dir.join("keys");
+    // 确保目录存在
+    fs::create_dir_all(&keys_dir).expect("无法创建密钥目录");
+    
+    keys_dir
+}
 
-const PUBLIC_KEY_PEM: &str = r#"-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxIMcEDCh52FcQdmZBeWs
-K1kwixjQfBOm8fiih09kRiRu2ryINlQj5lv/nuYG39RSCRaMEtO3FkjNHqOq0HS8
-nz+ie/w9UTSMVcvP3+t+j9ZFzKraUHho0NoIpgxuMoWTFWYxdYiN72UFAv1eDuVR
-XTlygi8zXA9KivWuXDuo4EKyyyi/UcnPA4ekkCS7TZ8IzA5geQ+4YD3EtUfVAkjF
-EKXhVic0DiYigmbQNpvgRuCjKrUtQcOoXrzcE1lVXZyQQmanG0AihUx8JdlH3BRp
-FvocESoAS9BW8x6wQ0TFQFWCUVolrUTHXqjyJoHhlOPAGmuJDsrzKcsFo8DBvvVx
-EwIDAQAB
------END PUBLIC KEY-----"#;
+// 获取私钥路径
+fn get_private_key_path() -> PathBuf {
+    get_keys_dir().join("private_key.pem")
+}
+
+// 获取公钥路径
+fn get_public_key_path() -> PathBuf {
+    get_keys_dir().join("public_key.pem")
+}
+
+// 加载或生成密钥对
+fn load_or_generate_keys() -> Result<(RsaPrivateKey, RsaPublicKey), LicenseError> {
+    let private_key_path = get_private_key_path();
+    let public_key_path = get_public_key_path();
+    
+    // 检查密钥文件是否存在
+    if private_key_path.exists() && public_key_path.exists() {
+        // 从文件加载密钥
+        let mut private_key_file = File::open(&private_key_path)
+            .map_err(|e| LicenseError::FileError(format!("无法打开私钥文件: {}", e)))?;
+        let mut private_key_pem = String::new();
+        private_key_file.read_to_string(&mut private_key_pem)
+            .map_err(|e| LicenseError::FileError(format!("无法读取私钥文件: {}", e)))?;
+        
+        let mut public_key_file = File::open(&public_key_path)
+            .map_err(|e| LicenseError::FileError(format!("无法打开公钥文件: {}", e)))?;
+        let mut public_key_pem = String::new();
+        public_key_file.read_to_string(&mut public_key_pem)
+            .map_err(|e| LicenseError::FileError(format!("无法读取公钥文件: {}", e)))?;
+        
+        // 解析密钥
+        let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_pem)
+            .map_err(|e| LicenseError::ValidationError(format!("无法解析私钥: {}", e)))?;
+        let public_key = RsaPublicKey::from_public_key_pem(&public_key_pem)
+            .map_err(|e| LicenseError::ValidationError(format!("无法解析公钥: {}", e)))?;
+        
+        Ok((private_key, public_key))
+    } else {
+        // 生成新的密钥对
+        println!("密钥文件不存在，正在生成新的密钥对...");
+        let private_key = RsaPrivateKey::new(&mut OsRng, 2048)
+            .map_err(|e| LicenseError::ValidationError(format!("生成RSA密钥失败: {}", e)))?;
+        let public_key = RsaPublicKey::from(&private_key);
+        
+        // 保存密钥到文件
+        let private_key_pem = private_key.to_pkcs8_pem(pkcs8::LineEnding::LF)
+            .map_err(|e| LicenseError::ValidationError(format!("转换私钥格式失败: {}", e)))?
+            .to_string();
+        let public_key_pem = public_key.to_public_key_pem(pkcs8::LineEnding::LF)
+            .map_err(|e| LicenseError::ValidationError(format!("转换公钥格式失败: {}", e)))?;
+        
+        let mut private_key_file = File::create(&private_key_path)
+            .map_err(|e| LicenseError::FileError(format!("创建私钥文件失败: {}", e)))?;
+        private_key_file.write_all(private_key_pem.as_bytes())
+            .map_err(|e| LicenseError::FileError(format!("写入私钥文件失败: {}", e)))?;
+        
+        let mut public_key_file = File::create(&public_key_path)
+            .map_err(|e| LicenseError::FileError(format!("创建公钥文件失败: {}", e)))?;
+        public_key_file.write_all(public_key_pem.as_bytes())
+            .map_err(|e| LicenseError::FileError(format!("写入公钥文件失败: {}", e)))?;
+        
+        Ok((private_key, public_key))
+    }
+}
+
+// 生成RSA签名
+fn generate_signature(data: &str) -> Result<String, LicenseError> {
+    // 加载或生成密钥
+    let (private_key, _) = load_or_generate_keys()?;
+    
+    // 计算数据的SHA-256哈希值
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    let hashed = hasher.finalize();
+    
+    // 使用私钥对哈希值进行签名
+    let signature = private_key.sign_with_rng(&mut OsRng, Pkcs1v15Sign::new::<Sha256>(), &hashed)
+        .map_err(|e| LicenseError::ValidationError(format!("签名失败: {}", e)))?;
+    
+    // 返回Base64编码的签名
+    Ok(general_purpose::STANDARD.encode(&signature))
+}
+
+// 验证RSA签名
+fn verify_signature(data: &str, signature_base64: &str) -> Result<bool, LicenseError> {
+    // 加载密钥
+    let (_, public_key) = load_or_generate_keys()?;
+    
+    // 计算数据的SHA-256哈希值
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    let hashed = hasher.finalize();
+    
+    // 解码Base64签名
+    let signature = general_purpose::STANDARD.decode(signature_base64)
+        .map_err(|e| LicenseError::ValidationError(format!("解码签名失败: {}", e)))?;
+    
+    // 验证签名
+    let result = public_key.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, &signature);
+    
+    // 返回验证结果
+    match result {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false)
+    }
+}
 
 // 许可证数据库文件路径
 fn get_license_db_path() -> PathBuf {
@@ -152,50 +239,6 @@ fn save_license_db(db: &LicenseDatabase) -> Result<(), LicenseError> {
         .map_err(|e| LicenseError::FileError(format!("写入数据库失败: {}", e)))?;
     
     Ok(())
-}
-
-// 生成RSA签名
-fn generate_signature(data: &str) -> Result<String, LicenseError> {
-    // 从PEM格式解析私钥
-    let private_key = RsaPrivateKey::from_pkcs8_pem(PRIVATE_KEY_PEM)
-        .map_err(|e| LicenseError::ValidationError(format!("解析私钥失败: {}", e)))?;
-    
-    // 计算数据的SHA-256哈希值
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    let hashed = hasher.finalize();
-    
-    // 使用私钥对哈希值进行签名
-    let signature = private_key.sign_with_rng(&mut OsRng, Pkcs1v15Sign::new::<Sha256>(), &hashed)
-        .map_err(|e| LicenseError::ValidationError(format!("签名失败: {}", e)))?;
-    
-    // 返回Base64编码的签名
-    Ok(general_purpose::STANDARD.encode(&signature))
-}
-
-// 验证RSA签名
-fn verify_signature(data: &str, signature_base64: &str) -> Result<bool, LicenseError> {
-    // 从PEM格式解析公钥
-    let public_key = RsaPublicKey::from_public_key_pem(PUBLIC_KEY_PEM)
-        .map_err(|e| LicenseError::ValidationError(format!("解析公钥失败: {}", e)))?;
-    
-    // 计算数据的SHA-256哈希值
-    let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
-    let hashed = hasher.finalize();
-    
-    // 解码Base64签名
-    let signature = general_purpose::STANDARD.decode(signature_base64)
-        .map_err(|e| LicenseError::ValidationError(format!("解码签名失败: {}", e)))?;
-    
-    // 验证签名
-    let result = public_key.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, &signature);
-    
-    // 返回验证结果
-    match result {
-        Ok(_) => Ok(true),
-        Err(_) => Ok(false)
-    }
 }
 
 pub fn generate_license(
@@ -298,5 +341,63 @@ pub fn get_all_licenses() -> Result<Vec<LicenseInfo>, LicenseError> {
 
 // 导出公钥
 pub fn export_public_key() -> String {
-    PUBLIC_KEY_PEM.to_string()
+    match File::open(get_public_key_path()) {
+        Ok(mut file) => {
+            let mut public_key_pem = String::new();
+            if file.read_to_string(&mut public_key_pem).is_ok() {
+                public_key_pem
+            } else {
+                "无法读取公钥文件".to_string()
+            }
+        },
+        Err(_) => {
+            match load_or_generate_keys() {
+                Ok(_) => {
+                    match File::open(get_public_key_path()) {
+                        Ok(mut file) => {
+                            let mut public_key_pem = String::new();
+                            if file.read_to_string(&mut public_key_pem).is_ok() {
+                                public_key_pem
+                            } else {
+                                "无法读取新生成的公钥文件".to_string()
+                            }
+                        },
+                        Err(_) => "无法打开新生成的公钥文件".to_string()
+                    }
+                },
+                Err(e) => format!("生成密钥对失败: {}", e)
+            }
+        }
+    }
+}
+
+// 生成新的RSA密钥对
+pub fn generate_new_key_pair(bits: usize) -> Result<(String, String), LicenseError> {
+    // 生成随机的RSA私钥
+    let private_key = RsaPrivateKey::new(&mut OsRng, bits)
+        .map_err(|e| LicenseError::ValidationError(format!("生成RSA密钥失败: {}", e)))?;
+    
+    // 从私钥导出公钥
+    let public_key = RsaPublicKey::from(&private_key);
+    
+    // 转换为PEM格式
+    let private_key_pem = private_key.to_pkcs8_pem(pkcs8::LineEnding::LF)
+        .map_err(|e| LicenseError::ValidationError(format!("转换私钥格式失败: {}", e)))?
+        .to_string();
+    
+    let public_key_pem = public_key.to_public_key_pem(pkcs8::LineEnding::LF)
+        .map_err(|e| LicenseError::ValidationError(format!("转换公钥格式失败: {}", e)))?;
+    
+    // 保存到文件
+    let mut private_key_file = File::create(get_private_key_path())
+        .map_err(|e| LicenseError::FileError(format!("创建私钥文件失败: {}", e)))?;
+    private_key_file.write_all(private_key_pem.as_bytes())
+        .map_err(|e| LicenseError::FileError(format!("写入私钥文件失败: {}", e)))?;
+    
+    let mut public_key_file = File::create(get_public_key_path())
+        .map_err(|e| LicenseError::FileError(format!("创建公钥文件失败: {}", e)))?;
+    public_key_file.write_all(public_key_pem.as_bytes())
+        .map_err(|e| LicenseError::FileError(format!("写入公钥文件失败: {}", e)))?;
+    
+    Ok((private_key_pem, public_key_pem))
 } 

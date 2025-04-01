@@ -39,6 +39,9 @@ function App() {
   // 公钥
   const [publicKey, setPublicKey] = useState("");
   
+  // 新生成的密钥对
+  const [generatedKeyPair, setGeneratedKeyPair] = useState<{privateKey: string, publicKey: string} | null>(null);
+  
   // 加载历史许可证
   useEffect(() => {
     if (activeTab === 'history') {
@@ -116,6 +119,16 @@ function App() {
       setPublicKey(key);
     } catch (error) {
       console.error("导出公钥失败:", error);
+    }
+  }
+  
+  // 生成新的RSA密钥对
+  async function generateKeyPair() {
+    try {
+      const [privateKey, publicKey] = await invoke<[string, string]>("generate_rsa_key_pair", { bits: 2048 });
+      setGeneratedKeyPair({ privateKey, publicKey });
+    } catch (error) {
+      console.error("生成密钥对失败:", error);
     }
   }
 
@@ -251,12 +264,13 @@ function App() {
           <h2>许可证历史记录</h2>
           
           <div className="action-buttons">
-            <button onClick={exportPublicKey}>导出公钥</button>
+            <button onClick={exportPublicKey}>导出当前公钥</button>
+            <button onClick={generateKeyPair}>生成新密钥对</button>
           </div>
           
           {publicKey && (
             <div className="public-key-result">
-              <h3>RSA公钥（用于验证许可证）</h3>
+              <h3>当前RSA公钥</h3>
               <textarea 
                 readOnly 
                 value={publicKey} 
@@ -265,6 +279,38 @@ function App() {
               <button onClick={() => copyToClipboard(publicKey)}>
                 复制公钥
               </button>
+            </div>
+          )}
+          
+          {generatedKeyPair && (
+            <div className="key-pair-result">
+              <h3>新生成的RSA密钥对（请安全保存）</h3>
+              
+              <h4>私钥（请妥善保管，不要分享）</h4>
+              <textarea 
+                readOnly 
+                value={generatedKeyPair.privateKey} 
+                rows={10}
+                className="private-key"
+              />
+              <button onClick={() => copyToClipboard(generatedKeyPair.privateKey)}>
+                复制私钥
+              </button>
+              
+              <h4>公钥（可安全分发）</h4>
+              <textarea 
+                readOnly 
+                value={generatedKeyPair.publicKey} 
+                rows={6}
+              />
+              <button onClick={() => copyToClipboard(generatedKeyPair.publicKey)}>
+                复制公钥
+              </button>
+              
+              <div className="key-instructions">
+                <p>请将这些密钥保存在安全的地方。使用新密钥前，需要修改license.rs中的常量。</p>
+                <button onClick={() => setGeneratedKeyPair(null)}>关闭</button>
+              </div>
             </div>
           )}
 
