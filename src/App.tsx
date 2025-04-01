@@ -36,6 +36,9 @@ function App() {
   // 历史许可证
   const [licenseHistory, setLicenseHistory] = useState<LicenseInfo[]>([]);
   
+  // 公钥
+  const [publicKey, setPublicKey] = useState("");
+  
   // 加载历史许可证
   useEffect(() => {
     if (activeTab === 'history') {
@@ -105,6 +108,16 @@ function App() {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('zh-CN');
   };
+
+  // 导出公钥
+  async function exportPublicKey() {
+    try {
+      const key = await invoke<string>("export_license_public_key");
+      setPublicKey(key);
+    } catch (error) {
+      console.error("导出公钥失败:", error);
+    }
+  }
 
   return (
     <main className="container">
@@ -236,6 +249,25 @@ function App() {
       {activeTab === 'history' && (
         <div className="history-view">
           <h2>许可证历史记录</h2>
+          
+          <div className="action-buttons">
+            <button onClick={exportPublicKey}>导出公钥</button>
+          </div>
+          
+          {publicKey && (
+            <div className="public-key-result">
+              <h3>RSA公钥（用于验证许可证）</h3>
+              <textarea 
+                readOnly 
+                value={publicKey} 
+                rows={6}
+              />
+              <button onClick={() => copyToClipboard(publicKey)}>
+                复制公钥
+              </button>
+            </div>
+          )}
+
           {licenseHistory.length === 0 ? (
             <p>暂无许可证记录</p>
           ) : (

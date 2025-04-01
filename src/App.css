@@ -121,7 +121,7 @@ button:hover {
   background-color: #164e85;
 }
 
-.license-result, .validation-result {
+.license-result, .validation-result, .public-key-result {
   margin-top: 2rem;
   padding: 1.5rem;
   border-radius: 4px;
@@ -208,6 +208,12 @@ textarea {
   margin-bottom: 0.5rem;
 }
 
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -228,7 +234,7 @@ textarea {
     color: #000000;
   }
 
-  .license-result, .validation-result {
+  .license-result, .validation-result, .public-key-result {
     background-color: #3a3a3a;
   }
 

@@ -1,7 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod license;
 
-use license::{generate_license, validate_license, get_all_licenses, LicenseInfo, LicenseValidationResult};
+use license::{generate_license, validate_license, get_all_licenses, export_public_key, LicenseInfo, LicenseValidationResult};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -26,6 +26,11 @@ fn get_licenses() -> Result<Vec<LicenseInfo>, String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn export_license_public_key() -> String {
+    export_public_key()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -34,7 +39,8 @@ pub fn run() {
             greet,
             generate_license_key,
             validate_license_key,
-            get_licenses
+            get_licenses,
+            export_license_public_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
