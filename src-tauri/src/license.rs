@@ -1,4 +1,8 @@
+use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Duration, Utc};
+use pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
+use rand::rngs::OsRng;
+use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -6,11 +10,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use base64::{engine::general_purpose, Engine as _};
 use uuid::Uuid;
-use rsa::{Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey};
-use rand::rngs::OsRng;
-use pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LicenseInfo {
@@ -21,6 +21,7 @@ pub struct LicenseInfo {
     pub expiry_date: DateTime<Utc>,
     pub features: Vec<String>,
     pub signature: String,
+    pub machine_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,17 +66,20 @@ fn get_keys_dir() -> PathBuf {
         PathBuf::from(app_data).join("drilling-system")
     } else if cfg!(target_os = "macos") {
         let home = std::env::var("HOME").expect("无法获取HOME环境变量");
-        PathBuf::from(home).join("Library").join("Application Support").join("drilling-system")
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("drilling-system")
     } else {
         // Linux
         let home = std::env::var("HOME").expect("无法获取HOME环境变量");
         PathBuf::from(home).join(".config").join("drilling-system")
     };
-    
+
     let keys_dir = app_dir.join("keys");
     // 确保目录存在
     fs::create_dir_all(&keys_dir).expect("无法创建密钥目录");
-    
+
     keys_dir
 }
 
@@ -93,28 +97,30 @@ fn get_public_key_path() -> PathBuf {
 fn load_or_generate_keys() -> Result<(RsaPrivateKey, RsaPublicKey), LicenseError> {
     let private_key_path = get_private_key_path();
     let public_key_path = get_public_key_path();
-    
+
     // 检查密钥文件是否存在
     if private_key_path.exists() && public_key_path.exists() {
         // 从文件加载密钥
         let mut private_key_file = File::open(&private_key_path)
             .map_err(|e| LicenseError::FileError(format!("无法打开私钥文件: {}", e)))?;
         let mut private_key_pem = String::new();
-        private_key_file.read_to_string(&mut private_key_pem)
+        private_key_file
+            .read_to_string(&mut private_key_pem)
             .map_err(|e| LicenseError::FileError(format!("无法读取私钥文件: {}", e)))?;
-        
+
         let mut public_key_file = File::open(&public_key_path)
             .map_err(|e| LicenseError::FileError(format!("无法打开公钥文件: {}", e)))?;
         let mut public_key_pem = String::new();
-        public_key_file.read_to_string(&mut public_key_pem)
+        public_key_file
+            .read_to_string(&mut public_key_pem)
             .map_err(|e| LicenseError::FileError(format!("无法读取公钥文件: {}", e)))?;
-        
+
         // 解析密钥
         let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key_pem)
             .map_err(|e| LicenseError::ValidationError(format!("无法解析私钥: {}", e)))?;
         let public_key = RsaPublicKey::from_public_key_pem(&public_key_pem)
             .map_err(|e| LicenseError::ValidationError(format!("无法解析公钥: {}", e)))?;
-        
+
         Ok((private_key, public_key))
     } else {
         // 生成新的密钥对
@@ -122,24 +128,28 @@ fn load_or_generate_keys() -> Result<(RsaPrivateKey, RsaPublicKey), LicenseError
         let private_key = RsaPrivateKey::new(&mut OsRng, 2048)
             .map_err(|e| LicenseError::ValidationError(format!("生成RSA密钥失败: {}", e)))?;
         let public_key = RsaPublicKey::from(&private_key);
-        
+
         // 保存密钥到文件
-        let private_key_pem = private_key.to_pkcs8_pem(pkcs8::LineEnding::LF)
+        let private_key_pem = private_key
+            .to_pkcs8_pem(pkcs8::LineEnding::LF)
             .map_err(|e| LicenseError::ValidationError(format!("转换私钥格式失败: {}", e)))?
             .to_string();
-        let public_key_pem = public_key.to_public_key_pem(pkcs8::LineEnding::LF)
+        let public_key_pem = public_key
+            .to_public_key_pem(pkcs8::LineEnding::LF)
             .map_err(|e| LicenseError::ValidationError(format!("转换公钥格式失败: {}", e)))?;
-        
+
         let mut private_key_file = File::create(&private_key_path)
             .map_err(|e| LicenseError::FileError(format!("创建私钥文件失败: {}", e)))?;
-        private_key_file.write_all(private_key_pem.as_bytes())
+        private_key_file
+            .write_all(private_key_pem.as_bytes())
             .map_err(|e| LicenseError::FileError(format!("写入私钥文件失败: {}", e)))?;
-        
+
         let mut public_key_file = File::create(&public_key_path)
             .map_err(|e| LicenseError::FileError(format!("创建公钥文件失败: {}", e)))?;
-        public_key_file.write_all(public_key_pem.as_bytes())
+        public_key_file
+            .write_all(public_key_pem.as_bytes())
             .map_err(|e| LicenseError::FileError(format!("写入公钥文件失败: {}", e)))?;
-        
+
         Ok((private_key, public_key))
     }
 }
@@ -148,16 +158,17 @@ fn load_or_generate_keys() -> Result<(RsaPrivateKey, RsaPublicKey), LicenseError
 fn generate_signature(data: &str) -> Result<String, LicenseError> {
     // 加载或生成密钥
     let (private_key, _) = load_or_generate_keys()?;
-    
+
     // 计算数据的SHA-256哈希值
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     let hashed = hasher.finalize();
-    
+
     // 使用私钥对哈希值进行签名
-    let signature = private_key.sign_with_rng(&mut OsRng, Pkcs1v15Sign::new::<Sha256>(), &hashed)
+    let signature = private_key
+        .sign_with_rng(&mut OsRng, Pkcs1v15Sign::new::<Sha256>(), &hashed)
         .map_err(|e| LicenseError::ValidationError(format!("签名失败: {}", e)))?;
-    
+
     // 返回Base64编码的签名
     Ok(general_purpose::STANDARD.encode(&signature))
 }
@@ -166,23 +177,24 @@ fn generate_signature(data: &str) -> Result<String, LicenseError> {
 fn verify_signature(data: &str, signature_base64: &str) -> Result<bool, LicenseError> {
     // 加载密钥
     let (_, public_key) = load_or_generate_keys()?;
-    
+
     // 计算数据的SHA-256哈希值
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     let hashed = hasher.finalize();
-    
+
     // 解码Base64签名
-    let signature = general_purpose::STANDARD.decode(signature_base64)
+    let signature = general_purpose::STANDARD
+        .decode(signature_base64)
         .map_err(|e| LicenseError::ValidationError(format!("解码签名失败: {}", e)))?;
-    
+
     // 验证签名
     let result = public_key.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, &signature);
-    
+
     // 返回验证结果
     match result {
         Ok(_) => Ok(true),
-        Err(_) => Ok(false)
+        Err(_) => Ok(false),
     }
 }
 
@@ -193,34 +205,37 @@ fn get_license_db_path() -> PathBuf {
         PathBuf::from(app_data).join("drilling-system")
     } else if cfg!(target_os = "macos") {
         let home = std::env::var("HOME").expect("无法获取HOME环境变量");
-        PathBuf::from(home).join("Library").join("Application Support").join("drilling-system")
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("drilling-system")
     } else {
         // Linux
         let home = std::env::var("HOME").expect("无法获取HOME环境变量");
         PathBuf::from(home).join(".config").join("drilling-system")
     };
-    
+    println!("目录{}", app_dir.display());
     // 确保目录存在
     fs::create_dir_all(&app_dir).expect("无法创建应用数据目录");
-    
+
     app_dir.join("licenses.json")
 }
 
 // 加载许可证数据库
 fn load_license_db() -> Result<LicenseDatabase, LicenseError> {
     let db_path = get_license_db_path();
-    
+
     if !db_path.exists() {
         return Ok(LicenseDatabase { licenses: vec![] });
     }
-    
+
     let mut file = File::open(&db_path)
         .map_err(|e| LicenseError::FileError(format!("打开数据库文件失败: {}", e)))?;
-    
+
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .map_err(|e| LicenseError::FileError(format!("读取数据库文件失败: {}", e)))?;
-    
+
     serde_json::from_str(&contents)
         .map_err(|e| LicenseError::SerializationError(format!("解析数据库失败: {}", e)))
 }
@@ -228,16 +243,16 @@ fn load_license_db() -> Result<LicenseDatabase, LicenseError> {
 // 保存许可证数据库
 fn save_license_db(db: &LicenseDatabase) -> Result<(), LicenseError> {
     let db_path = get_license_db_path();
-    
+
     let json = serde_json::to_string_pretty(db)
         .map_err(|e| LicenseError::SerializationError(format!("序列化数据库失败: {}", e)))?;
-    
+
     let mut file = File::create(&db_path)
         .map_err(|e| LicenseError::FileError(format!("创建数据库文件失败: {}", e)))?;
-    
+
     file.write_all(json.as_bytes())
         .map_err(|e| LicenseError::FileError(format!("写入数据库失败: {}", e)))?;
-    
+
     Ok(())
 }
 
@@ -248,10 +263,16 @@ pub fn generate_license(
     features: Vec<String>,
 ) -> Result<String, LicenseError> {
     let now = Utc::now();
-    let expiry = now + Duration::days(expiry_days as i64);
-    
+    // 处理特殊的过期时间：0表示永不过期
+    let expiry = if expiry_days == 0 {
+        // 设置一个非常远的未来日期，比如100年后
+        now + Duration::days(36500) // 约100年
+    } else {
+        now + Duration::days(expiry_days as i64)
+    };
+
     let license_id = Uuid::new_v4().to_string();
-    
+
     // 创建不包含签名的许可证信息
     let license_data = LicenseInfo {
         license_id,
@@ -261,52 +282,54 @@ pub fn generate_license(
         expiry_date: expiry,
         features,
         signature: String::new(), // 暂时为空
+        machine_code: None,       // 无机器码限制
     };
-    
+
     // 序列化为JSON
     let json_data = serde_json::to_string(&license_data)
         .map_err(|e| LicenseError::SerializationError(e.to_string()))?;
-    
+
     // 生成签名
     let signature = generate_signature(&json_data)?;
-    
+
     // 更新许可证信息，包含签名
     let license_with_signature = LicenseInfo {
         signature,
         ..license_data
     };
-    
+
     // 保存到数据库
     let mut db = load_license_db()?;
     db.licenses.push(license_with_signature.clone());
     save_license_db(&db)?;
-    
+
     // 序列化并编码为Base64
     let final_json = serde_json::to_string(&license_with_signature)
         .map_err(|e| LicenseError::SerializationError(e.to_string()))?;
-    
+
     Ok(general_purpose::STANDARD.encode(final_json))
 }
 
 pub fn validate_license(license_key: &str) -> Result<LicenseValidationResult, LicenseError> {
     // 解码Base64
-    let decoded = general_purpose::STANDARD.decode(license_key)
+    let decoded = general_purpose::STANDARD
+        .decode(license_key)
         .map_err(|e| LicenseError::ValidationError(format!("Base64解码失败: {}", e)))?;
-    
+
     // 解析JSON
     let license_data: LicenseInfo = serde_json::from_slice(&decoded)
         .map_err(|e| LicenseError::ValidationError(format!("JSON解析失败: {}", e)))?;
-    
+
     // 验证签名
     let signature = license_data.signature.clone();
     let mut license_for_verification = license_data.clone();
     license_for_verification.signature = String::new();
-    
+
     let json_data = serde_json::to_string(&license_for_verification)
         .map_err(|e| LicenseError::SerializationError(e.to_string()))?;
-    
+
     let is_signature_valid = verify_signature(&json_data, &signature)?;
-    
+
     if !is_signature_valid {
         return Ok(LicenseValidationResult {
             is_valid: false,
@@ -314,17 +337,26 @@ pub fn validate_license(license_key: &str) -> Result<LicenseValidationResult, Li
             message: "许可证签名无效".to_string(),
         });
     }
-    
+
     // 检查过期时间
     let now = Utc::now();
-    if license_data.expiry_date < now {
+
+    // 检查是否设置了特殊的过期时间（0表示永不过期）
+    let is_expired = match license_data.expiry_date.timestamp() {
+        // 如果时间戳为0或负数，表示永不过期
+        t if t <= 0 => false,
+        // 否则正常检查是否过期
+        _ => license_data.expiry_date < now,
+    };
+
+    if is_expired {
         return Ok(LicenseValidationResult {
             is_valid: false,
             info: Some(license_data),
             message: "许可证已过期".to_string(),
         });
     }
-    
+
     // 有效许可证
     Ok(LicenseValidationResult {
         is_valid: true,
@@ -349,25 +381,21 @@ pub fn export_public_key() -> String {
             } else {
                 "无法读取公钥文件".to_string()
             }
-        },
-        Err(_) => {
-            match load_or_generate_keys() {
-                Ok(_) => {
-                    match File::open(get_public_key_path()) {
-                        Ok(mut file) => {
-                            let mut public_key_pem = String::new();
-                            if file.read_to_string(&mut public_key_pem).is_ok() {
-                                public_key_pem
-                            } else {
-                                "无法读取新生成的公钥文件".to_string()
-                            }
-                        },
-                        Err(_) => "无法打开新生成的公钥文件".to_string()
-                    }
-                },
-                Err(e) => format!("生成密钥对失败: {}", e)
-            }
         }
+        Err(_) => match load_or_generate_keys() {
+            Ok(_) => match File::open(get_public_key_path()) {
+                Ok(mut file) => {
+                    let mut public_key_pem = String::new();
+                    if file.read_to_string(&mut public_key_pem).is_ok() {
+                        public_key_pem
+                    } else {
+                        "无法读取新生成的公钥文件".to_string()
+                    }
+                }
+                Err(_) => "无法打开新生成的公钥文件".to_string(),
+            },
+            Err(e) => format!("生成密钥对失败: {}", e),
+        },
     }
 }
 
@@ -376,28 +404,142 @@ pub fn generate_new_key_pair(bits: usize) -> Result<(String, String), LicenseErr
     // 生成随机的RSA私钥
     let private_key = RsaPrivateKey::new(&mut OsRng, bits)
         .map_err(|e| LicenseError::ValidationError(format!("生成RSA密钥失败: {}", e)))?;
-    
+
     // 从私钥导出公钥
     let public_key = RsaPublicKey::from(&private_key);
-    
+
     // 转换为PEM格式
-    let private_key_pem = private_key.to_pkcs8_pem(pkcs8::LineEnding::LF)
+    let private_key_pem = private_key
+        .to_pkcs8_pem(pkcs8::LineEnding::LF)
         .map_err(|e| LicenseError::ValidationError(format!("转换私钥格式失败: {}", e)))?
         .to_string();
-    
-    let public_key_pem = public_key.to_public_key_pem(pkcs8::LineEnding::LF)
+
+    let public_key_pem = public_key
+        .to_public_key_pem(pkcs8::LineEnding::LF)
         .map_err(|e| LicenseError::ValidationError(format!("转换公钥格式失败: {}", e)))?;
-    
+
     // 保存到文件
     let mut private_key_file = File::create(get_private_key_path())
         .map_err(|e| LicenseError::FileError(format!("创建私钥文件失败: {}", e)))?;
-    private_key_file.write_all(private_key_pem.as_bytes())
+    private_key_file
+        .write_all(private_key_pem.as_bytes())
         .map_err(|e| LicenseError::FileError(format!("写入私钥文件失败: {}", e)))?;
-    
+
     let mut public_key_file = File::create(get_public_key_path())
         .map_err(|e| LicenseError::FileError(format!("创建公钥文件失败: {}", e)))?;
-    public_key_file.write_all(public_key_pem.as_bytes())
+    public_key_file
+        .write_all(public_key_pem.as_bytes())
         .map_err(|e| LicenseError::FileError(format!("写入公钥文件失败: {}", e)))?;
-    
+
     Ok((private_key_pem, public_key_pem))
-} 
+}
+
+pub fn generate_license_with_machine_code(
+    customer_name: &str,
+    customer_email: &str,
+    expiry_days: u32,
+    features: Vec<String>,
+    machine_code: &str,
+) -> Result<String, LicenseError> {
+    let now = Utc::now();
+    // 处理特殊的过期时间：0表示永不过期
+    let expiry = if expiry_days == 0 {
+        // 设置一个非常远的未来日期，比如100年后
+        now + Duration::days(36500) // 约100年
+    } else {
+        now + Duration::days(expiry_days as i64)
+    };
+
+    let license_id = Uuid::new_v4().to_string();
+
+    // 创建不包含签名的许可证信息，包含机器码
+    let license_data = LicenseInfo {
+        license_id,
+        customer_name: customer_name.to_string(),
+        customer_email: customer_email.to_string(),
+        issue_date: now,
+        expiry_date: expiry,
+        features,
+        signature: String::new(),                     // 暂时为空
+        machine_code: Some(machine_code.to_string()), // 添加机器码
+    };
+
+    // 序列化为JSON
+    let json_data = serde_json::to_string(&license_data)
+        .map_err(|e| LicenseError::SerializationError(e.to_string()))?;
+
+    // 生成签名
+    let signature = generate_signature(&json_data)?;
+
+    // 更新许可证信息，包含签名
+    let license_with_signature = LicenseInfo {
+        signature,
+        ..license_data
+    };
+
+    // 保存到数据库
+    let mut db = load_license_db()?;
+    db.licenses.push(license_with_signature.clone());
+    save_license_db(&db)?;
+
+    // 序列化并编码为Base64
+    let final_json = serde_json::to_string(&license_with_signature)
+        .map_err(|e| LicenseError::SerializationError(e.to_string()))?;
+
+    Ok(general_purpose::STANDARD.encode(final_json))
+}
+
+// 添加验证许可证并检查机器码的函数
+pub fn validate_license_with_machine_code(
+    license_key: &str,
+    machine_code: &str,
+) -> Result<LicenseValidationResult, LicenseError> {
+    let result = validate_license(license_key)?;
+
+    // 如果许可证本身无效，直接返回结果
+    if !result.is_valid || result.info.is_none() {
+        return Ok(result);
+    }
+
+    let license_info = result.info.unwrap();
+
+    // 检查机器码是否匹配
+    if let Some(ref license_machine_code) = license_info.machine_code {
+        if license_machine_code != machine_code {
+            return Ok(LicenseValidationResult {
+                is_valid: false,
+                info: Some(license_info),
+                message: "许可证与当前机器不匹配".to_string(),
+            });
+        }
+    }
+
+    // 所有检查都通过
+    Ok(LicenseValidationResult {
+        is_valid: true,
+        info: Some(license_info),
+        message: "许可证有效且与当前机器匹配".to_string(),
+    })
+}
+
+// 删除许可证
+pub fn delete_license(license_id: &str) -> Result<(), LicenseError> {
+    let mut db = load_license_db()?;
+
+    // 查找要删除的许可证索引
+    let index = db
+        .licenses
+        .iter()
+        .position(|license| license.license_id == license_id);
+
+    match index {
+        Some(idx) => {
+            // 删除许可证
+            db.licenses.remove(idx);
+            // 保存更新后的数据库
+            save_license_db(&db)?;
+            Ok(())
+        }
+        None => Err(LicenseError::ValidationError("许可证不存在".to_string())),
+    }
+}
