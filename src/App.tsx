@@ -40,6 +40,8 @@ function App() {
   
   // 历史许可证
   const [licenseHistory, setLicenseHistory] = useState<LicenseInfo[]>([]);
+  const [selectedLicense, setSelectedLicense] = useState<LicenseInfo | null>(null);
+  const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
   
   // 公钥
   const [publicKey, setPublicKey] = useState("");
@@ -161,6 +163,12 @@ function App() {
       });
     }
   }
+
+  // 查看许可证
+  function viewLicense(license: LicenseInfo) {
+    setSelectedLicense(license);
+    setIsLicenseModalOpen(true);
+  }
   
   // 复制到剪贴板
   const copyToClipboard = async (text: string) => {
@@ -260,11 +268,30 @@ function App() {
       render: (text) => text || '无限制',
     },
     {
+      title: '许可证密钥',
+      key: 'license_key',
+      width: 150,
+      render: (_, record) => (
+        <Button type="link" onClick={() => {
+          // 将许可证对象转为JSON字符串，然后Base64编码
+          const licenseJson = JSON.stringify(record);
+          const licenseKey = btoa(licenseJson);
+          // 复制到剪贴板
+          copyToClipboard(licenseKey);
+        }}>
+          复制密钥
+        </Button>
+      ),
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       render: (_, record) => (
         <Space size="small">
+          <Button type="primary" size="small" onClick={() => viewLicense(record)}>
+            查看许可证
+          </Button>
           <Button type="primary" size="small" onClick={() => exportPublicKey()}>
             查看公钥
           </Button>
@@ -475,6 +502,78 @@ function App() {
           value={publicKey} 
           rows={10}
         />
+      </Modal>
+
+      {/* 许可证详情模态框 */}
+      <Modal
+        title="许可证详情"
+        open={isLicenseModalOpen && selectedLicense !== null}
+        onCancel={() => setIsLicenseModalOpen(false)}
+        footer={[
+          <Button 
+            key="copy" 
+            type="primary" 
+            onClick={() => {
+              if (selectedLicense) {
+                const licenseText = JSON.stringify(selectedLicense, null, 2);
+                copyToClipboard(licenseText);
+              }
+            }}
+          >
+            复制许可证信息
+          </Button>,
+          <Button 
+            key="copyKey" 
+            type="primary" 
+            onClick={() => {
+              if (selectedLicense) {
+                const licenseJson = JSON.stringify(selectedLicense);
+                const licenseKey = btoa(licenseJson);
+                copyToClipboard(licenseKey);
+              }
+            }}
+          >
+            复制许可证密钥
+          </Button>,
+          <Button key="close" onClick={() => setIsLicenseModalOpen(false)}>
+            关闭
+          </Button>,
+        ]}
+        width={600}
+      >
+        {selectedLicense && (
+          <div className="license-details">
+            <ul>
+              <li><strong>许可证 ID:</strong> {selectedLicense.license_id}</li>
+              <li><strong>客户名称:</strong> {selectedLicense.customer_name}</li>
+              <li><strong>客户邮箱:</strong> {selectedLicense.customer_email}</li>
+              <li><strong>发行日期:</strong> {formatDate(selectedLicense.issue_date)}</li>
+              <li><strong>过期日期:</strong> {formatDate(selectedLicense.expiry_date)}</li>
+              <li><strong>功能列表:</strong> {selectedLicense.features.join(', ')}</li>
+              {selectedLicense.machine_code && (
+                <li><strong>绑定机器码:</strong> {selectedLicense.machine_code}</li>
+              )}
+              <li>
+                <strong>签名:</strong>
+                <Input.TextArea 
+                  readOnly 
+                  value={selectedLicense.signature} 
+                  rows={3}
+                  style={{ marginTop: 5 }}
+                />
+              </li>
+              <li>
+                <strong>许可证密钥:</strong>
+                <Input.TextArea 
+                  readOnly 
+                  value={btoa(JSON.stringify(selectedLicense))} 
+                  rows={3}
+                  style={{ marginTop: 5 }}
+                />
+              </li>
+            </ul>
+          </div>
+        )}
       </Modal>
     </main>
   );
