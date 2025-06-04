@@ -54,7 +54,6 @@ export function UpdateChecker() {
     setChecking(true);
     try {
       const result = await invoke<string>('check_update');
-      
       if (result.includes('有更新可用')) {
         setUpdateAvailable(true);
       } else {

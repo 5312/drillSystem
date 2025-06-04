@@ -4,6 +4,7 @@ use std::fmt;
 use sysinfo::{CpuExt, System, SystemExt};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum MachineIdError {
     SystemInfoError(String),

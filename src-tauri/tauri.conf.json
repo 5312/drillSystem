@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DrillingSystemLicense",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.drilling-system.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -41,7 +41,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ2REQ5Q0Y1Rjc1NTM3NUUKUldSZU4xWDM5WnpkMW5nY1k1V3JibmZBbHRxN3MxMS8zc2R2SlBvdi85U3ZLSEsyYkdyVUNqdEwK",
       "endpoints": [
-        "https://github.com/5312/drillSystem/releases/download/{{target}}/update.json"
+        "https://github.com/5312/drillSystem/releases/download/v{{current_version}}/latest.json"
       ],
       "dialog": true,
       "active": true

@@ -36,6 +36,7 @@ pub struct LicenseDatabase {
     pub licenses: Vec<LicenseInfo>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum LicenseError {
     SerializationError(String),
