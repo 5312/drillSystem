@@ -8,6 +8,7 @@ use license::{
     LicenseValidationResult,
 };
 use machine_code::get_machine_id;
+use tauri_plugin_updater::UpdaterExt;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -81,9 +82,43 @@ fn delete_license_by_id(license_id: &str) -> Result<(), String> {
     license::delete_license(license_id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<String, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+
+    let update_response = updater.check().await.map_err(|e| e.to_string())?;
+
+    if update_response.is_some() {
+        Ok("有更新可用".to_string())
+    } else {
+        Ok("当前已是最新版本".to_string())
+    }
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+
+    // 检查是否有可用更新
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+
+    if let Some(update) = update {
+        // 下载并安装更新
+        // 第一个参数是进度回调函数，第二个参数是退出前的回调函数
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("没有可用的更新".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -95,7 +130,9 @@ pub fn run() {
             generate_license_key_with_machine_code,
             validate_license_key_with_machine_code,
             get_current_machine_id,
-            delete_license_by_id
+            delete_license_by_id,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

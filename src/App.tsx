@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
-import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
-import { Table, Modal, Button, Input, Checkbox, Tabs, Space, Popconfirm } from "antd";
+import { Table, Modal, Button, Input,  Tabs, Space, Popconfirm, Layout, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import "./App.css";
+import { UpdateChecker } from './components/UpdateChecker';
+
+const { Header, Content, Footer } = Layout;
+const { Title } = Typography;
 
 interface LicenseInfo {
   license_id: string;
@@ -473,109 +476,118 @@ function App() {
   ];
 
   return (
-    <main className="container">
-      <h1>钻井系统许可证管理</h1>
-      
-      <Tabs 
-        activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as 'generate' | 'validate' | 'history')}
-        items={tabItems}
-      />
-      
-      {/* 公钥模态框 */}
-      <Modal
-        title="当前RSA公钥"
-        open={isPublicKeyModalOpen}
-        onCancel={() => setIsPublicKeyModalOpen(false)}
-        footer={[
-          <Button key="copy" type="primary" onClick={() => copyToClipboard(publicKey)}>
-            复制公钥
-          </Button>,
-          <Button key="close" onClick={() => setIsPublicKeyModalOpen(false)}>
-            关闭
-          </Button>,
-        ]}
-        width={800}
-      >
-        <Input.TextArea 
-          readOnly 
-          value={publicKey} 
-          rows={10}
-        />
-      </Modal>
+    <Layout style={{ minHeight: '100vh' }}>
+      <Header style={{ padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Title level={3} style={{ color: 'white', margin: 0 }}>钻井系统许可证管理</Title>
+        <UpdateChecker />
+      </Header>
+      <Content style={{ padding: '20px' }}>
+        <div style={{ background: '#fff', padding: '24px', minHeight: 360 }}>
+          <Tabs 
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as 'generate' | 'validate' | 'history')}
+            items={tabItems}
+          />
+          
+          {/* 公钥模态框 */}
+          <Modal
+            title="当前RSA公钥"
+            open={isPublicKeyModalOpen}
+            onCancel={() => setIsPublicKeyModalOpen(false)}
+            footer={[
+              <Button key="copy" type="primary" onClick={() => copyToClipboard(publicKey)}>
+                复制公钥
+              </Button>,
+              <Button key="close" onClick={() => setIsPublicKeyModalOpen(false)}>
+                关闭
+              </Button>,
+            ]}
+            width={800}
+          >
+            <Input.TextArea 
+              readOnly 
+              value={publicKey} 
+              rows={10}
+            />
+          </Modal>
 
-      {/* 许可证详情模态框 */}
-      <Modal
-        title="许可证详情"
-        open={isLicenseModalOpen && selectedLicense !== null}
-        onCancel={() => setIsLicenseModalOpen(false)}
-        footer={[
-          <Button 
-            key="copy" 
-            type="primary" 
-            onClick={() => {
-              if (selectedLicense) {
-                const licenseText = JSON.stringify(selectedLicense, null, 2);
-                copyToClipboard(licenseText);
-              }
-            }}
+          {/* 许可证详情模态框 */}
+          <Modal
+            title="许可证详情"
+            open={isLicenseModalOpen && selectedLicense !== null}
+            onCancel={() => setIsLicenseModalOpen(false)}
+            footer={[
+              <Button 
+                key="copy" 
+                type="primary" 
+                onClick={() => {
+                  if (selectedLicense) {
+                    const licenseText = JSON.stringify(selectedLicense, null, 2);
+                    copyToClipboard(licenseText);
+                  }
+                }}
+              >
+                复制许可证信息
+              </Button>,
+              <Button 
+                key="copyKey" 
+                type="primary" 
+                onClick={() => {
+                  if (selectedLicense) {
+                    const licenseJson = JSON.stringify(selectedLicense);
+                    const licenseKey = btoa(licenseJson);
+                    copyToClipboard(licenseKey);
+                  }
+                }}
+              >
+                复制许可证密钥
+              </Button>,
+              <Button key="close" onClick={() => setIsLicenseModalOpen(false)}>
+                关闭
+              </Button>,
+            ]}
+            width={600}
           >
-            复制许可证信息
-          </Button>,
-          <Button 
-            key="copyKey" 
-            type="primary" 
-            onClick={() => {
-              if (selectedLicense) {
-                const licenseJson = JSON.stringify(selectedLicense);
-                const licenseKey = btoa(licenseJson);
-                copyToClipboard(licenseKey);
-              }
-            }}
-          >
-            复制许可证密钥
-          </Button>,
-          <Button key="close" onClick={() => setIsLicenseModalOpen(false)}>
-            关闭
-          </Button>,
-        ]}
-        width={600}
-      >
-        {selectedLicense && (
-          <div className="license-details">
-            <ul>
-              <li><strong>许可证 ID:</strong> {selectedLicense.license_id}</li>
-              <li><strong>客户名称:</strong> {selectedLicense.customer_name}</li>
-              <li><strong>客户邮箱:</strong> {selectedLicense.customer_email}</li>
-              <li><strong>发行日期:</strong> {formatDate(selectedLicense.issue_date)}</li>
-              <li><strong>过期日期:</strong> {formatDate(selectedLicense.expiry_date)}</li>
-              <li><strong>功能列表:</strong> {selectedLicense.features.join(', ')}</li>
-              {selectedLicense.machine_code && (
-                <li><strong>绑定机器码:</strong> {selectedLicense.machine_code}</li>
-              )}
-              <li>
-                <strong>签名:</strong>
-                <Input.TextArea 
-                  readOnly 
-                  value={selectedLicense.signature} 
-                  rows={3}
-                  style={{ marginTop: 5 }}
-                />
-              </li>
-              <li>
-                <strong>许可证密钥:</strong>
-                <Input.TextArea 
-                  readOnly 
-                  value={btoa(JSON.stringify(selectedLicense))} 
-                  rows={3}
-                  style={{ marginTop: 5 }}
-                />
-              </li>
-            </ul>
-          </div>
-        )}
-      </Modal>
-    </main>
+            {selectedLicense && (
+              <div className="license-details">
+                <ul>
+                  <li><strong>许可证 ID:</strong> {selectedLicense.license_id}</li>
+                  <li><strong>客户名称:</strong> {selectedLicense.customer_name}</li>
+                  <li><strong>客户邮箱:</strong> {selectedLicense.customer_email}</li>
+                  <li><strong>发行日期:</strong> {formatDate(selectedLicense.issue_date)}</li>
+                  <li><strong>过期日期:</strong> {formatDate(selectedLicense.expiry_date)}</li>
+                  <li><strong>功能列表:</strong> {selectedLicense.features.join(', ')}</li>
+                  {selectedLicense.machine_code && (
+                    <li><strong>绑定机器码:</strong> {selectedLicense.machine_code}</li>
+                  )}
+                  <li>
+                    <strong>签名:</strong>
+                    <Input.TextArea 
+                      readOnly 
+                      value={selectedLicense.signature} 
+                      rows={3}
+                      style={{ marginTop: 5 }}
+                    />
+                  </li>
+                  <li>
+                    <strong>许可证密钥:</strong>
+                    <Input.TextArea 
+                      readOnly 
+                      value={btoa(JSON.stringify(selectedLicense))} 
+                      rows={3}
+                      style={{ marginTop: 5 }}
+                    />
+                  </li>
+                </ul>
+              </div>
+            )}
+          </Modal>
+        </div>
+      </Content>
+      <Footer style={{ textAlign: 'center' }}>
+        钻井系统许可证管理 ©{new Date().getFullYear()} 版权所有
+      </Footer>
+    </Layout>
   );
 }
 

@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "钻井系统许可证管理",
-        "width": 900,
-        "height": 700
+        "width": 1400,
+        "height": 900
       }
     ],
     "security": {
@@ -36,6 +36,13 @@
     "fs": {},
     "core": {
       "all": true
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ2REQ5Q0Y1Rjc1NTM3NUUKUldSZU4xWDM5WnpkMW5nY1k1V3JibmZBbHRxN3MxMS8zc2R2SlBvdi85U3ZLSEsyYkdyVUNqdEwK",
+      "endpoints": [
+        "https://releases.myapp.com/{{target}}/{{arch}}/{{current_version}}",
+        "https://github.com/user/repo/releases/latest/download/latest.json"
+      ]
     }
   }
 }
