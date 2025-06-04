@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "钻井系统许可证管理",
+  "productName": "DrillingSystemLicense",
   "version": "0.1.0",
   "identifier": "com.drilling-system.app",
   "build": {
