@@ -11,16 +11,26 @@ jobs:
     permissions:
       contents: write
     outputs:
-      # 输出 upload_url 而非 release_id
-      upload_url: ${{ steps.create-release.outputs.upload_url }}
-      release_id: ${{ steps.create-release.outputs.release_id }}
+      release_id: ${{ steps.create-release.outputs.result }}
 
     steps:
       - uses: actions/checkout@v3
       
+      - name: 设置Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          
+      - name: 安装pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+          
       - name: 获取版本
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        shell: bash
         
       - name: 创建发布
         id: create-release
@@ -37,39 +47,10 @@ jobs:
               draft: true,
               prerelease: false
             })
-            // 同时输出 upload_url 和 release_id
-            core.setOutput('upload_url', data.upload_url)
-            core.setOutput('release_id', data.id)
             return data.id
 
-  # 添加共享的安装步骤
-  install-dependencies:
-    runs-on: ubuntu-latest
-    outputs:
-      node_modules: ${{ steps.hash.outputs.hash }}
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: 设置Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-          cache: 'pnpm'
-          
-      - name: 安装pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-          
-      - name: 安装依赖
-        run: pnpm install
-        
-      - name: 生成缓存键
-        id: hash
-        run: echo "hash=$(find . -type f -name 'pnpm-lock.yaml' -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-
   build-tauri:
-    needs: [create-release, install-dependencies]
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -81,14 +62,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: 恢复Node模块缓存
-        uses: actions/cache@v3
-        with:
-          path: |
-            node_modules
-            **/node_modules
-          key: ${{ needs.install-dependencies.outputs.node_modules }}
-          
       - name: 设置Node.js
         uses: actions/setup-node@v3
         with:
@@ -97,16 +70,20 @@ jobs:
       - name: 安装Rust
         uses: dtolnay/rust-toolchain@stable
         
-      - name: 安装Windows依赖
+      - name: 安装依赖 (Windows)
         if: matrix.platform == 'windows-latest'
-        run: rustup target add x86_64-pc-windows-msvc
+        run: |
+          rustup target add x86_64-pc-windows-msvc
           
       - name: 安装pnpm
         uses: pnpm/action-setup@v2
         with:
           version: 8
+          run_install: false
           
-      # 关键修复：使用 upload_url 而非 release_id
+      - name: 安装前端依赖
+        run: pnpm install
+        
       - name: 构建Tauri应用
         uses: tauri-apps/tauri-action@v0
         env:
@@ -114,8 +91,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          # 使用 upload_url 替代 release_id
-          uploadUrl: ${{ needs.create-release.outputs.upload_url }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: true
           
   publish-release:
@@ -137,4 +113,4 @@ jobs:
               repo: context.repo.repo,
               release_id: process.env.release_id,
               draft: false
-            })
+            }) 
