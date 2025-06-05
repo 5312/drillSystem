@@ -84,7 +84,7 @@ jobs:
           rustup target add x86_64-pc-windows-msvc
       
       - name: 安装依赖 (Linux ARM64)
-        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        if: matrix.platform == 'ubuntu-24.04-arm' && matrix.arch == 'arm64'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
@@ -100,13 +100,13 @@ jobs:
         run: pnpm install
       
       - name: 安装 Linux 构建依赖
-        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'x64'
+        if: matrix.platform == 'ubuntu-24.04-arm' && matrix.arch == 'x64'
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libglib2.0-dev build-essential
       
       - name: 安装 Linux ARM64 构建依赖
-        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        if: matrix.platform == 'ubuntu-24.04-arm' && matrix.arch == 'arm64'
         run: |
           sudo dpkg --add-architecture arm64
           sudo apt-get update
@@ -124,7 +124,7 @@ jobs:
           includeUpdaterJson: true
       
       - name: 构建Tauri应用 (Linux ARM64)
-        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        if: matrix.platform == 'ubuntu-24.04-arm' && matrix.arch == 'arm64'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
