@@ -62,7 +62,7 @@ pnpm generate-update-key
 2. 提交代码并推送
 3. 创建新的tag（格式为`v*.*.*`）并推送
 4. GitHub Actions会自动构建和发布新版本
-
+5. ARM64 构建只支持公共库
 ## 许可证
 
 MIT
