@@ -56,7 +56,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest]
+        include:
+          - platform: windows-latest
+            arch: x64
+          - platform: ubuntu-24.04-arm
+            arch: arm64
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -69,22 +73,47 @@ jobs:
           
       - name: 安装Rust
         uses: dtolnay/rust-toolchain@stable
-        
+        with:
+          targets: |
+            x86_64-pc-windows-msvc
+            aarch64-unknown-linux-gnu
+
       - name: 安装依赖 (Windows)
         if: matrix.platform == 'windows-latest'
         run: |
           rustup target add x86_64-pc-windows-msvc
-          
+      
+      - name: 安装依赖 (Linux ARM64)
+        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
+      
       - name: 安装pnpm
         uses: pnpm/action-setup@v2
         with:
           version: 8
           run_install: false
-          
+      
       - name: 安装前端依赖
         run: pnpm install
-        
-      - name: 构建Tauri应用
+      
+      - name: 安装 Linux 构建依赖
+        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libglib2.0-dev build-essential
+      
+      - name: 安装 Linux ARM64 构建依赖
+        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y pkg-config:arm64 libglib2.0-dev:arm64 gcc-aarch64-linux-gnu
+      
+      - name: 构建Tauri应用 (Windows x64)
+        if: matrix.platform == 'windows-latest' && matrix.arch == 'x64'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +122,18 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: true
-          
+      
+      - name: 构建Tauri应用 (Linux ARM64)
+        if: matrix.platform == 'ubuntu-latest' && matrix.arch == 'arm64'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: "--target aarch64-unknown-linux-gnu"
+          includeUpdaterJson: true
+
   publish-release:
     runs-on: ubuntu-latest
     permissions:
